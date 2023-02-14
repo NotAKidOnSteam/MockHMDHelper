@@ -8,7 +8,7 @@ You can learn more about Single Pass Stereo rendering in Unity here:
 
 https://docs.unity3d.com/Manual/SinglePassStereoRendering.html
 
-https://user-images.githubusercontent.com/37721153/218486311-c710da6d-e589-4d83-8c04-51e4c2111fa8.mp4
+https://user-images.githubusercontent.com/37721153/218635567-fb0fbbc2-53a2-4651-9ad7-20d3bda5e14e.mp4
 
 ---
 
