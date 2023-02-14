@@ -1,11 +1,12 @@
 # MockHMDHelper
-A script that automates like 4 clicks.
 
-Kinda WIP, kinda just winging it. Not really sure what I am automating.
+MockHMDHelper is a simple script that partially automates the installation and configuration of the MockHMD XR Plugin in the Unity Editor. 
 
-https://user-images.githubusercontent.com/37721153/218484197-d8f97cd8-1584-4d04-bfdb-69b300f410d3.mp4
+The Mock HMD XR Plugin is made for building VR applications without an actual VR device, so it is a great tool for testing if shaders are compatible with Single Pass Stereo rendering within Unity Editor. MockHMDHelper automates instalation to a few collected button clicks.
 
-Goal is to be able to automate this for mass testing of projects during the transition period for those who don't want to check if their shaders function properly in VR. I guess it also serves a perpose after the transitional period, as those who cannot check if a shader works with SinglePass Stereo Rendering in-game can easily from editor.
+You can learn more about Single Pass Stereo rendering in Unity here:
+
+https://docs.unity3d.com/Manual/SinglePassStereoRendering.html
 
 https://user-images.githubusercontent.com/37721153/218486311-c710da6d-e589-4d83-8c04-51e4c2111fa8.mp4
 
