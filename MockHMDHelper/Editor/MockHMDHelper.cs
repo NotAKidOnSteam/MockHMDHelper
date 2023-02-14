@@ -75,13 +75,18 @@ namespace NAK.MockHMDHelper.Editor
             if (packageInstalled[packageID]) return false;
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.HelpBox($"{packageID} is missing from the project.", MessageType.Warning);
-            EditorGUI.BeginDisabledGroup(packageInstalling[packageID]);
-            if (GUILayout.Button($"Install {packageID}", GUILayout.Width(200), GUILayout.Height(EditorGUIUtility.singleLineHeight * 2)))
+            string buttonText = $"Install {packageID}";
+            if (packageInstalling[packageID])
+            {
+                buttonText = "Installing...";
+                GUI.enabled = false;
+            }
+            if (GUILayout.Button(buttonText, GUILayout.Width(200), GUILayout.Height(EditorGUIUtility.singleLineHeight * 2)))
             {
                 packageInstalling[packageID] = true;
                 Client.Add(packageID);
             }
-            EditorGUI.EndDisabledGroup();
+            GUI.enabled = true;
             EditorGUILayout.EndHorizontal();
             return true;
         }
