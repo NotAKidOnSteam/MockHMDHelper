@@ -128,7 +128,6 @@ namespace NAK.MockHMDHelper.Editor
             PropertyInfo managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
             object manager = managerProperty.GetValue(settings);
 
-
             PropertyInfo activeLoaderProperty = xrManagerSettingsType.GetProperty("activeLoader", BindingFlags.Public | BindingFlags.Instance);
             object activeLoader = activeLoaderProperty.GetValue(manager);
 
@@ -163,11 +162,8 @@ namespace NAK.MockHMDHelper.Editor
             Type xrPackageMetadataStoreType = assemblyTypes.FirstOrDefault(type => type.Name == "XRPackageMetadataStore");
 
             var buildTargetSettings = (UnityEngine.Object)ScriptableObject.CreateInstance(xrGeneralSettingsPerBuildTargetType);
-            if (!EditorBuildSettings.TryGetConfigObject("com.unity.xr.management.loader_settings", out buildTargetSettings))
-            {
-                // TODO: handle case where TryGetConfigObject failed
-                return;
-            }
+            MethodInfo getOrCreateMethod = xrGeneralSettingsPerBuildTargetType.GetMethod("GetOrCreate", BindingFlags.NonPublic | BindingFlags.Static);
+            buildTargetSettings = (UnityEngine.Object)getOrCreateMethod.Invoke(buildTargetSettings, null);
 
             object settings = xrGeneralSettingsPerBuildTargetType
                 .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
@@ -175,8 +171,13 @@ namespace NAK.MockHMDHelper.Editor
 
             if (settings == null)
             {
-                // TODO: handle case where the result of the method call is null
-                return;
+                //create the default settings for the manager
+                MethodInfo createDefaultManagerSettingsForBuildTargetMethod = xrGeneralSettingsPerBuildTargetType.GetMethod("CreateDefaultManagerSettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance);
+                createDefaultManagerSettingsForBuildTargetMethod.Invoke(buildTargetSettings, new object[] { currentTarget });
+                settings = xrGeneralSettingsPerBuildTargetType
+                                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
+                                .Invoke(buildTargetSettings, new object[] { currentTarget });
+                if (settings == null) Debug.Log("[MockHMDHelper] All has failed and we are now doomed.");
             }
 
             PropertyInfo managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
