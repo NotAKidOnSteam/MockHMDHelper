@@ -26,7 +26,7 @@ namespace NAK.MockHMDHelper.Editor
         private Dictionary<string, bool> packageInstalled = new Dictionary<string, bool>();
         private Dictionary<string, bool> packageInstalling = new Dictionary<string, bool>();
 
-        private bool _testingEnabled;
+        private static bool _testingEnabled;
 
         // Add a menu item to create the window
         [MenuItem("NotAKid/MockHMDHelper")]
@@ -43,11 +43,12 @@ namespace NAK.MockHMDHelper.Editor
                 packageInstalled[packageID] = IsPackageInstalled(packageID);
                 packageInstalling[packageID] = false;
             }
+            EditorApplication.playModeStateChanged += PlayModeState;
         }
 
         private void OnDisable()
         {
-            ToggleMockHMD(false);
+            EditorApplication.playModeStateChanged -= PlayModeState;
         }
 
         private void OnGUI()
@@ -66,10 +67,13 @@ namespace NAK.MockHMDHelper.Editor
             //enable testing stuf here
             EditorGUI.BeginDisabledGroup(packagesMissing || Application.isPlaying);
 
+            _testingEnabled = EditorPrefs.GetBool("MockHMDHelper_OnPlayMode", _testingEnabled);
+
             string text = !_testingEnabled ? "Enable on PlayMode" : "Disable on PlayMode";
             if (GUILayout.Button(text, GUILayout.Height(EditorGUIUtility.singleLineHeight * 2)))
             {
                 _testingEnabled = !_testingEnabled;
+                EditorPrefs.SetBool("MockHMDHelper_OnPlayMode", _testingEnabled);
                 ToggleMockHMD(_testingEnabled);
             }
 
@@ -100,18 +104,16 @@ namespace NAK.MockHMDHelper.Editor
             return jsonText.Contains(package);
         }
 
-        public void ToggleMockHMD(bool flag)
+        public void StartXRLoader()
         {
             var currentTarget = EditorUserBuildSettings.selectedBuildTargetGroup;
-            
-            var AllTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(assembly => assembly.GetTypes());
-            Type xrGeneralSettingsType = AllTypes.FirstOrDefault(type => type.Name == "XRGeneralSettings");
-            Type xrGeneralSettingsPerBuildTargetType = AllTypes.FirstOrDefault(type => type.Name == "XRGeneralSettingsPerBuildTarget");
-            Type xrPackageMetadataStoreType = AllTypes.FirstOrDefault(type => type.Name == "XRPackageMetadataStore");
-            Type xrManagerType = AllTypes.FirstOrDefault(type => type.Name == "XRManager");
-            Type xrManagerSettingsType = AllTypes.FirstOrDefault(type => type.Name == "XRManagerSettings");
+            var allTypes = AppDomain.CurrentDomain.GetAssemblies().SelectMany(assembly => assembly.GetTypes());
+            Type xrGeneralSettingsType = allTypes.FirstOrDefault(type => type.Name == "XRGeneralSettings");
+            Type xrManagerType = allTypes.FirstOrDefault(type => type.Name == "XRManager");
+            Type xrManagerSettingsType = allTypes.FirstOrDefault(type => type.Name == "XRManagerSettings");
+            Type xrGeneralSettingsPerBuildTargetType = allTypes.FirstOrDefault(type => type.Name == "XRGeneralSettingsPerBuildTarget");
 
-            var buildTargetSettings = (UnityEngine.Object)ScriptableObject.CreateInstance(xrGeneralSettingsPerBuildTargetType);
+            var buildTargetSettings = (UnityEngine.Object)ScriptableObject.CreateInstance(xrGeneralSettingsType);
             bool success = EditorBuildSettings.TryGetConfigObject("com.unity.xr.management.loader_settings", out buildTargetSettings);
             if (!success)
             {
@@ -119,7 +121,58 @@ namespace NAK.MockHMDHelper.Editor
                 return;
             }
 
-            object settings = xrGeneralSettingsPerBuildTargetType.GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance).Invoke(buildTargetSettings, new object[] { currentTarget });
+            object settings = xrGeneralSettingsPerBuildTargetType
+                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
+                .Invoke(buildTargetSettings, new object[] { currentTarget });
+
+            PropertyInfo managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
+            object manager = managerProperty.GetValue(settings);
+
+
+            PropertyInfo activeLoaderProperty = xrManagerSettingsType.GetProperty("activeLoader", BindingFlags.Public | BindingFlags.Instance);
+            object activeLoader = activeLoaderProperty.GetValue(manager);
+
+
+            if (activeLoader != null)
+            {
+                MethodInfo stopSubsystemsMethod = xrManagerSettingsType.GetMethod("StopSubsystems", BindingFlags.Public | BindingFlags.Instance);
+                stopSubsystemsMethod.Invoke(manager, null);
+
+                MethodInfo deinitializeLoaderMethod = xrManagerSettingsType.GetMethod("DeinitializeLoader", BindingFlags.Public | BindingFlags.Instance);
+                deinitializeLoaderMethod.Invoke(manager, null);
+            }
+
+            MethodInfo initializeLoaderSyncMethod = xrManagerSettingsType.GetMethod("InitializeLoaderSync", BindingFlags.Public | BindingFlags.Instance);
+            initializeLoaderSyncMethod.Invoke(manager, null);
+
+            MethodInfo startSubsystemsMethod = xrManagerSettingsType.GetMethod("StartSubsystems", BindingFlags.Public | BindingFlags.Instance);
+            startSubsystemsMethod.Invoke(manager, null);
+        }
+
+
+        public void ToggleMockHMD(bool flag)
+        {
+            var currentTarget = EditorUserBuildSettings.selectedBuildTargetGroup;
+
+            var assemblyTypes = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .SelectMany(assembly => assembly.GetTypes());
+
+            Type xrGeneralSettingsType = assemblyTypes.FirstOrDefault(type => type.Name == "XRGeneralSettings");
+            Type xrGeneralSettingsPerBuildTargetType = assemblyTypes.FirstOrDefault(type => type.Name == "XRGeneralSettingsPerBuildTarget");
+            Type xrPackageMetadataStoreType = assemblyTypes.FirstOrDefault(type => type.Name == "XRPackageMetadataStore");
+
+            var buildTargetSettings = (UnityEngine.Object)ScriptableObject.CreateInstance(xrGeneralSettingsPerBuildTargetType);
+            if (!EditorBuildSettings.TryGetConfigObject("com.unity.xr.management.loader_settings", out buildTargetSettings))
+            {
+                // TODO: handle case where TryGetConfigObject failed
+                return;
+            }
+
+            object settings = xrGeneralSettingsPerBuildTargetType
+                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
+                .Invoke(buildTargetSettings, new object[] { currentTarget });
+
             if (settings == null)
             {
                 // TODO: handle case where the result of the method call is null
@@ -129,17 +182,16 @@ namespace NAK.MockHMDHelper.Editor
             PropertyInfo managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
             object manager = managerProperty.GetValue(settings);
 
-            if (flag)
+            MethodInfo methodInfo = xrPackageMetadataStoreType.GetMethod(flag ? "AssignLoader" : "RemoveLoader", BindingFlags.Public | BindingFlags.Static);
+            object[] parameters = new object[] { manager, "Unity.XR.MockHMD.MockHMDLoader", currentTarget };
+            methodInfo.Invoke(null, parameters);
+        }
+
+        private void PlayModeState(PlayModeStateChange state) 
+        {
+            if (state == PlayModeStateChange.ExitingEditMode)
             {
-                MethodInfo assignLoaderMethod = xrPackageMetadataStoreType.GetMethod("AssignLoader", BindingFlags.Public | BindingFlags.Static);
-                object[] assignLoaderParameters = new object[] { manager, "Unity.XR.MockHMD.MockHMDLoader", currentTarget };
-                assignLoaderMethod.Invoke(null, assignLoaderParameters);
-            }
-            else
-            {
-                MethodInfo removeLoaderMethod = xrPackageMetadataStoreType.GetMethod("RemoveLoader", BindingFlags.Public | BindingFlags.Static);
-                object[] removeLoaderParameters = new object[] { manager, "Unity.XR.MockHMD.MockHMDLoader", currentTarget };
-                removeLoaderMethod.Invoke(null, removeLoaderParameters);
+                if (_testingEnabled) StartXRLoader();
             }
         }
     }
