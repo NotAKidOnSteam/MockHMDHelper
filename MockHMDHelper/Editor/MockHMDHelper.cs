@@ -11,12 +11,7 @@ namespace NAK.MockHMDHelper.Editor
 {
     [InitializeOnLoad]
     public class MockHMDHelperEditorWindow : EditorWindow
-    {   
-        public MockHMDHelperEditorWindow()
-        {
-
-        }
-
+    {
         //Package checking stuff
         private static readonly string[] packageIDs = { "com.unity.xr.management", "com.unity.xr.mock-hmd" };
         private Dictionary<string, bool> packageInstalled = new Dictionary<string, bool>();
