@@ -12,13 +12,9 @@ namespace NAK.MockHMDHelper.Editor
     [InitializeOnLoad]
     public class MockHMDHelperEditorWindow : EditorWindow
     {   
-        public static Type MockHMDLoaderType;
         public MockHMDHelperEditorWindow()
         {
-            MockHMDLoaderType = AppDomain.CurrentDomain
-                    .GetAssemblies()
-                    .SelectMany(assembly => assembly.GetTypes())
-                    .FirstOrDefault(type => type.Name == "MockHMDLoader");
+
         }
 
         //Package checking stuff
@@ -43,12 +39,6 @@ namespace NAK.MockHMDHelper.Editor
                 packageInstalled[packageID] = IsPackageInstalled(packageID);
                 packageInstalling[packageID] = false;
             }
-            EditorApplication.playModeStateChanged += PlayModeState;
-        }
-
-        private void OnDisable()
-        {
-            EditorApplication.playModeStateChanged -= PlayModeState;
         }
 
         private void OnGUI()
@@ -98,8 +88,7 @@ namespace NAK.MockHMDHelper.Editor
 
         public bool IsPackageInstalled(string package)
         {
-            if (!File.Exists("Packages/manifest.json"))
-                return false;
+            if (!File.Exists("Packages/manifest.json")) return false;
             string jsonText = File.ReadAllText("Packages/manifest.json");
             return jsonText.Contains(package);
         }
@@ -151,49 +140,75 @@ namespace NAK.MockHMDHelper.Editor
 
         public void ToggleMockHMD(bool flag)
         {
+            var xrGeneralSettingsPerBuildTargetType = AppDomain.CurrentDomain
+                .GetAssemblies()
+                .SelectMany(assembly => assembly.GetTypes())
+                .FirstOrDefault(type => type.Name == "XRGeneralSettingsPerBuildTarget");
+
+            if (xrGeneralSettingsPerBuildTargetType == null)
+            {
+                Debug.Log("[MockHMDHelper] XRGeneralSettingsPerBuildTarget type not found.");
+                return;
+            }
+
+            var buildTargetSettings = ScriptableObject.CreateInstance(xrGeneralSettingsPerBuildTargetType);
+
+            var getOrCreateMethod = xrGeneralSettingsPerBuildTargetType
+                .GetMethod("GetOrCreate", BindingFlags.NonPublic | BindingFlags.Static);
+
+            var settings = getOrCreateMethod.Invoke(buildTargetSettings, null);
+
             var currentTarget = EditorUserBuildSettings.selectedBuildTargetGroup;
 
-            var assemblyTypes = AppDomain.CurrentDomain
+            var methodInfo = xrGeneralSettingsPerBuildTargetType
+                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance);
+
+            var settingsForBuildTarget = methodInfo.Invoke(settings, new object[] { currentTarget });
+
+            if (settingsForBuildTarget == null)
+            {
+                var createDefaultManagerSettingsForBuildTargetMethod = xrGeneralSettingsPerBuildTargetType
+                    .GetMethod("CreateDefaultManagerSettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance);
+
+                createDefaultManagerSettingsForBuildTargetMethod.Invoke(settings, new object[] { currentTarget });
+
+                settingsForBuildTarget = methodInfo.Invoke(settings, new object[] { currentTarget });
+
+                if (settingsForBuildTarget == null)
+                {
+                    Debug.Log("[MockHMDHelper] All has failed and we are now doomed.");
+                    return;
+                }
+            }
+
+            var xrGeneralSettingsType = settingsForBuildTarget.GetType();
+
+            var managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
+
+            var manager = managerProperty.GetValue(settingsForBuildTarget);
+
+            var xrPackageMetadataStoreType = AppDomain.CurrentDomain
                 .GetAssemblies()
-                .SelectMany(assembly => assembly.GetTypes());
+                .SelectMany(assembly => assembly.GetTypes())
+                .FirstOrDefault(type => type.Name == "XRPackageMetadataStore");
 
-            Type xrGeneralSettingsType = assemblyTypes.FirstOrDefault(type => type.Name == "XRGeneralSettings");
-            Type xrGeneralSettingsPerBuildTargetType = assemblyTypes.FirstOrDefault(type => type.Name == "XRGeneralSettingsPerBuildTarget");
-            Type xrPackageMetadataStoreType = assemblyTypes.FirstOrDefault(type => type.Name == "XRPackageMetadataStore");
-
-            var buildTargetSettings = (UnityEngine.Object)ScriptableObject.CreateInstance(xrGeneralSettingsPerBuildTargetType);
-            MethodInfo getOrCreateMethod = xrGeneralSettingsPerBuildTargetType.GetMethod("GetOrCreate", BindingFlags.NonPublic | BindingFlags.Static);
-            buildTargetSettings = (UnityEngine.Object)getOrCreateMethod.Invoke(buildTargetSettings, null);
-
-            object settings = xrGeneralSettingsPerBuildTargetType
-                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
-                .Invoke(buildTargetSettings, new object[] { currentTarget });
-
-            if (settings == null)
+            if (xrPackageMetadataStoreType == null)
             {
-                //create the default settings for the manager
-                MethodInfo createDefaultManagerSettingsForBuildTargetMethod = xrGeneralSettingsPerBuildTargetType.GetMethod("CreateDefaultManagerSettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance);
-                createDefaultManagerSettingsForBuildTargetMethod.Invoke(buildTargetSettings, new object[] { currentTarget });
-                settings = xrGeneralSettingsPerBuildTargetType
-                                .GetMethod("SettingsForBuildTarget", BindingFlags.Public | BindingFlags.Instance)
-                                .Invoke(buildTargetSettings, new object[] { currentTarget });
-                if (settings == null) Debug.Log("[MockHMDHelper] All has failed and we are now doomed.");
+                Debug.Log("[MockHMDHelper] XRPackageMetadataStore type not found.");
+                return;
             }
 
-            PropertyInfo managerProperty = xrGeneralSettingsType.GetProperty("Manager", BindingFlags.Public | BindingFlags.Instance);
-            object manager = managerProperty.GetValue(settings);
+            var assignLoaderMethod = xrPackageMetadataStoreType
+                .GetMethod("AssignLoader", BindingFlags.Public | BindingFlags.Static);
 
-            MethodInfo methodInfo = xrPackageMetadataStoreType.GetMethod(flag ? "AssignLoader" : "RemoveLoader", BindingFlags.Public | BindingFlags.Static);
-            object[] parameters = new object[] { manager, "Unity.XR.MockHMD.MockHMDLoader", currentTarget };
-            methodInfo.Invoke(null, parameters);
-        }
+            var removeLoaderMethod = xrPackageMetadataStoreType
+                .GetMethod("RemoveLoader", BindingFlags.Public | BindingFlags.Static);
 
-        private void PlayModeState(PlayModeStateChange state) 
-        {
-            if (state == PlayModeStateChange.ExitingEditMode)
-            {
-                if (_testingEnabled) StartXRLoader();
-            }
+            var loaderMethod = flag ? assignLoaderMethod : removeLoaderMethod;
+
+            var parameters = new object[] { manager, "Unity.XR.MockHMD.MockHMDLoader", currentTarget };
+
+            loaderMethod.Invoke(null, parameters);
         }
     }
 }
